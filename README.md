@@ -1,25 +1,25 @@
-# Retail Streaming Lakehouse
+# Streaming Lakehouse для розничных заказов
 
-This project is a compact example of an event pipeline that can be replayed and inspected. Retail order events enter Kafka, Spark Structured Streaming validates and deduplicates them, and accepted rows are appended to an Iceberg table in S3-compatible storage.
+Компактный пример событийного пайплайна с возможностью повторной обработки и расследования ошибок. События заказов поступают в Kafka, Spark Structured Streaming валидирует и дедуплицирует их, после чего принятые строки записываются в Iceberg-таблицу в S3-совместимом хранилище.
 
-The repository focuses on the parts that tend to cause incidents in real pipelines: duplicate delivery, late events, malformed payloads, checkpoint recovery and traceability back to a Kafka offset.
+Основной акцент — на ситуациях, которые приводят к инцидентам в реальных потоках: повторная доставка, опоздавшие события, некорректный payload, восстановление по checkpoint и трассировка до Kafka offset.
 
-## Flow
+## Схема потока
 
 ```text
-order producer -> Redpanda/Kafka -> Spark Structured Streaming
-                                      |            |
-                                      |            +-> quarantine JSON
-                                      +-> Iceberg on MinIO -> Trino SQL
-                                             |
-                                             +-> Nessie catalog
+генератор заказов → Redpanda/Kafka → Spark Structured Streaming
+                                            |            |
+                                            |            +→ quarantine JSON
+                                            +→ Iceberg в MinIO → Trino SQL
+                                                   |
+                                                   +→ каталог Nessie
 ```
 
-The event model uses explicit identifiers and event time. The streaming job keeps Kafka topic, partition and offset in the table, applies a ten-minute watermark and deduplicates by `event_id`. Malformed JSON and records that fail business validation go to a separate replayable path with a reason.
+Модель события содержит отдельные идентификаторы и `event_time`. Streaming job сохраняет topic, partition и offset, применяет watermark в десять минут и удаляет дубликаты по `event_id`. Некорректный JSON и записи, не прошедшие бизнес-валидацию, попадают в replayable quarantine вместе с причиной.
 
-## Run locally
+## Локальный запуск
 
-Start the small infrastructure layer:
+Поднять инфраструктурный слой:
 
 ```bash
 docker compose up -d
@@ -29,26 +29,26 @@ pip install -e ".[dev,spark]"
 python -m retail_streaming.producer --events 1000
 ```
 
-Run Spark with the Kafka, Iceberg, Nessie and S3 connector packages that match your Spark distribution. The job entry point is:
+Spark нужно запускать с версиями Kafka, Iceberg, Nessie и S3-коннекторов, совместимыми с выбранным дистрибутивом. Entry point:
 
 ```bash
 python -m retail_streaming.stream_job
 ```
 
-Connector versions are intentionally not hidden inside the Python package because Spark and cluster images must use a compatible set. In a deployed environment they belong in the image build or `spark-submit --packages` configuration.
+Версии JVM-коннекторов намеренно не спрятаны внутри Python-пакета: в рабочей среде их фиксируют в образе Spark или параметрах `spark-submit --packages`.
 
-The Redpanda console is available at <http://localhost:18080>, MinIO at <http://localhost:19001>, the Nessie API at <http://localhost:19120>, and Trino at <http://localhost:18082>.
+Интерфейсы: Redpanda Console — <http://localhost:18080>, MinIO — <http://localhost:19001>, Nessie API — <http://localhost:19120>, Trino — <http://localhost:18082>.
 
-## Design decisions
+## Принятые решения
 
-- Idempotent Kafka production and stable order keys preserve per-order ordering.
-- Event time is timezone-aware and separate from Kafka ingestion time.
-- Watermarking bounds state while allowing normal late arrival.
-- `event_id` handles at-least-once delivery without treating legitimate order updates as duplicates.
-- Source offsets remain in Iceberg for investigation and targeted replay.
-- The local password in Compose is a development-only credential.
+- Idempotent producer и стабильный ключ заказа сохраняют порядок событий одного заказа.
+- Event time содержит timezone и не смешивается со временем поступления в Kafka.
+- Watermark ограничивает state, оставляя допустимое окно для опоздавших событий.
+- Дедупликация по `event_id` учитывает at-least-once delivery и не удаляет настоящие обновления заказа.
+- Kafka offsets сохраняются в Iceberg для расследований и адресного replay.
+- Пароль в Compose относится только к локальному стенду.
 
-## Tests
+## Проверки
 
 ```bash
 pip install -e ".[dev]"
@@ -57,10 +57,10 @@ pytest -q
 docker compose config --quiet
 ```
 
-Tests cover the producer-side event contract without requiring Kafka or downloading Spark images. Docker Compose is validated statically. The complete Spark-to-Iceberg path still requires an integration run with matching connector packages and is not claimed as part of the fast test suite.
+Быстрые тесты проверяют producer-side контракт без запуска Kafka и скачивания Spark-образов; Docker Compose проходит статическую валидацию. Полный путь Spark → Iceberg требует integration run с совместимым набором коннекторов и не выдаётся за часть fast test suite.
 
-## Scope
+## Границы проекта
 
-This is a local engineering case study, not a production cluster definition. Production work would add a durable Nessie database, encrypted secrets, Kafka ACLs, metrics, table maintenance, retention policies and a tested Spark image.
+Это локальный инженерный стенд, а не описание production-кластера. Для production потребуются постоянная БД Nessie, secrets management, Kafka ACL, метрики, обслуживание Iceberg-таблиц, retention policy и протестированный Spark image.
 
-The architecture was informed by the public Iceberg, Spark, Trino, Nessie and Redpanda documentation and by open examples such as `danthelion/trino-minio-iceberg-example`. No source code was copied from those projects.
+Архитектура опирается на публичную документацию Iceberg, Spark, Trino, Nessie и Redpanda, а также на открытые примеры вроде `danthelion/trino-minio-iceberg-example`. Код из этих проектов не копировался.
