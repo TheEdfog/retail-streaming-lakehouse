@@ -15,7 +15,7 @@ order producer -> Redpanda/Kafka -> Spark Structured Streaming
                                              +-> Nessie catalog
 ```
 
-The event model uses explicit identifiers and event time. The streaming job keeps Kafka topic, partition and offset in the table, applies a ten-minute watermark and deduplicates by `event_id`. Invalid JSON is written to a separate replayable path rather than silently discarded.
+The event model uses explicit identifiers and event time. The streaming job keeps Kafka topic, partition and offset in the table, applies a ten-minute watermark and deduplicates by `event_id`. Malformed JSON and records that fail business validation go to a separate replayable path with a reason.
 
 ## Run locally
 
@@ -57,7 +57,7 @@ pytest -q
 docker compose config --quiet
 ```
 
-Tests cover the event contract without requiring Kafka or downloading Spark images. A full integration run is deliberately separate because it pulls several large JVM and container dependencies.
+Tests cover the producer-side event contract without requiring Kafka or downloading Spark images. Docker Compose is validated statically. The complete Spark-to-Iceberg path still requires an integration run with matching connector packages and is not claimed as part of the fast test suite.
 
 ## Scope
 

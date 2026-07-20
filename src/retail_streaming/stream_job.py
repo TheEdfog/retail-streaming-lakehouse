@@ -41,19 +41,40 @@ def parse_orders(kafka_rows):
     return decoded.withColumn("event", F.from_json("raw_value", order_schema()))
 
 
-def valid_orders(parsed_rows):
+def _valid_event_condition():
     from pyspark.sql import functions as F
 
     return (
-        parsed_rows.where(F.col("event").isNotNull())
+        F.col("event").isNotNull()
+        & (F.col("event.amount") > 0)
+        & F.col("event.currency").rlike("^[A-Z]{3}$")
+        & F.col("event.status").isin("created", "paid", "cancelled")
+        & (F.col("event.schema_version") == 1)
+    )
+
+
+def valid_orders(parsed_rows):
+    return (
+        parsed_rows.where(_valid_event_condition())
         .select("event.*", "topic", "partition", "offset", "kafka_time")
-        .where(
-            (F.col("amount") > 0)
-            & F.col("currency").rlike("^[A-Z]{3}$")
-            & F.col("status").isin("created", "paid", "cancelled")
-        )
         .withWatermark("event_time", "10 minutes")
         .dropDuplicates(["event_id"])
+    )
+
+
+def invalid_orders(parsed_rows):
+    from pyspark.sql import functions as F
+
+    is_valid = F.coalesce(_valid_event_condition(), F.lit(False))
+    return parsed_rows.where(~is_valid).select(
+        "raw_value",
+        "topic",
+        "partition",
+        "offset",
+        "kafka_time",
+        F.when(F.col("event").isNull(), F.lit("malformed_json"))
+        .otherwise(F.lit("contract_validation_failed"))
+        .alias("reason"),
     )
 
 
@@ -104,20 +125,25 @@ def main() -> None:
     )
     parsed = parse_orders(kafka_rows)
     good = valid_orders(parsed)
-    bad = parsed.where("event IS NULL").select(
-        "raw_value", "topic", "partition", "offset", "kafka_time"
-    )
+    bad = invalid_orders(parsed)
 
-    good.writeStream.format("iceberg").outputMode("append").option(
-        "checkpointLocation", f"{args.checkpoint}/valid"
-    ).toTable("lake.retail.orders")
-    quarantine = (
+    accepted_query = (
+        good.writeStream.format("iceberg")
+        .outputMode("append")
+        .option("checkpointLocation", f"{args.checkpoint}/valid")
+        .toTable("lake.retail.orders")
+    )
+    quarantine_query = (
         bad.writeStream.format("json")
         .option("path", "data/quarantine")
         .option("checkpointLocation", f"{args.checkpoint}/quarantine")
         .start()
     )
-    quarantine.awaitTermination()
+    try:
+        spark.streams.awaitAnyTermination()
+    finally:
+        accepted_query.stop()
+        quarantine_query.stop()
 
 
 if __name__ == "__main__":

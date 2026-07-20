@@ -6,6 +6,8 @@ build-backend = "hatchling.build"
 name = "retail-streaming-lakehouse"
 version = "0.1.0"
 description = "A small Kafka-to-Iceberg streaming pipeline for retail orders"
+authors = [{ name = "Alim Narmamatov" }]
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
 dependencies = [
   "confluent-kafka>=2.6,<3",
