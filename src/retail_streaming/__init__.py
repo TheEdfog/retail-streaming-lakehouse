@@ -1,0 +1,1 @@
+"""Retail streaming lakehouse example."""
