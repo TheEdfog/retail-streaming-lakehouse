@@ -6,25 +6,7 @@
 
 ## Схема потока
 
-```mermaid
-sequenceDiagram
-    participant Producer as Генератор
-    participant Kafka as Redpanda / Kafka
-    participant Spark as Spark Streaming
-    participant Storage as Lakehouse
-    participant Trino as Trino
-
-    Producer->>Kafka: События заказов
-    Kafka->>Spark: Payload, partition и offset
-    Spark->>Spark: Валидация, watermark и дедупликация
-    alt Событие принято
-        Spark->>Storage: Iceberg в MinIO
-        Note over Storage: Каталог Nessie
-        Storage-->>Trino: Таблица заказов
-    else Ошибка
-        Spark->>Storage: Replayable quarantine с причиной
-    end
-```
+![Поток обработки розничных заказов](docs/architecture.svg)
 
 Модель события содержит отдельные идентификаторы и `event_time`. Streaming job сохраняет topic, partition и offset, применяет watermark в десять минут и удаляет дубликаты по `event_id`. Некорректный JSON и записи, не прошедшие бизнес-валидацию, попадают в replayable quarantine вместе с причиной.
 
