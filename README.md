@@ -7,7 +7,7 @@
 ## Схема потока
 
 ```mermaid
-flowchart LR
+flowchart TD
     producer["Генератор заказов"] --> kafka["Redpanda / Kafka"]
     kafka --> spark["Spark Structured Streaming"]
     spark --> validation{"Валидация"}
