@@ -7,15 +7,23 @@
 ## Схема потока
 
 ```mermaid
-flowchart TD
-    producer["Генератор заказов"] --> kafka["Redpanda / Kafka"]
-    kafka --> spark["Spark Structured Streaming"]
-    spark --> validation{"Валидация"}
-    validation -->|"ошибка"| quarantine["Replayable quarantine<br/>с причиной и offset"]
-    validation -->|"событие принято"| dedup["Watermark и дедупликация<br/>по event_id"]
-    dedup --> iceberg["Iceberg-таблица<br/>каталог Nessie"]
-    iceberg --> minio[("MinIO")]
-    minio --> trino["Trino SQL"]
+sequenceDiagram
+    participant Producer as Генератор
+    participant Kafka as Redpanda / Kafka
+    participant Spark as Spark Streaming
+    participant Storage as Lakehouse
+    participant Trino as Trino
+
+    Producer->>Kafka: События заказов
+    Kafka->>Spark: Payload, partition и offset
+    Spark->>Spark: Валидация, watermark и дедупликация
+    alt Событие принято
+        Spark->>Storage: Iceberg в MinIO
+        Note over Storage: Каталог Nessie
+        Storage-->>Trino: Таблица заказов
+    else Ошибка
+        Spark->>Storage: Replayable quarantine с причиной
+    end
 ```
 
 Модель события содержит отдельные идентификаторы и `event_time`. Streaming job сохраняет topic, partition и offset, применяет watermark в десять минут и удаляет дубликаты по `event_id`. Некорректный JSON и записи, не прошедшие бизнес-валидацию, попадают в replayable quarantine вместе с причиной.
