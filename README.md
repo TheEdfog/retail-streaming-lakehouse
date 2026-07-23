@@ -13,9 +13,8 @@ flowchart TD
     spark --> validation{"Валидация"}
     validation -->|"ошибка"| quarantine["Replayable quarantine<br/>с причиной и offset"]
     validation -->|"событие принято"| dedup["Watermark и дедупликация<br/>по event_id"]
-    dedup --> iceberg["Iceberg-таблица"]
+    dedup --> iceberg["Iceberg-таблица<br/>каталог Nessie"]
     iceberg --> minio[("MinIO")]
-    nessie["Каталог Nessie"] --- iceberg
     minio --> trino["Trino SQL"]
 ```
 
